@@ -11,12 +11,12 @@ license = "MPL-2.0"
 repository = "https://github.com/marctjones/compass"
 
 [dependencies]
-# Browser engine (modified Servo with transport layer support)
+# Browser engine (modified Servo with Rigging transport patches)
 # Uncomment when integrating with Servo rendering:
 # servo = { git = "https://github.com/marctjones/servo", branch = "transport-layer" }
 
-# Transport layer
-rigging = { git = "https://github.com/marctjones/rigging", features = ["unix", "tcp", "tor"] }
+# Note: Transport layer is provided by the patched Servo (Rigging patches).
+# No separate rigging dependency needed - use Servo's net::transport_url module.
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

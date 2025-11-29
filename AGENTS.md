@@ -2,13 +2,57 @@
 
 This document provides instructions for AI coding assistants (Claude Code, Gemini, Cursor, etc.) working on the Compass privacy-focused browser.
 
+**IMPORTANT**: Read this ENTIRE document before writing any code. Pay special attention to the "Common Mistakes to Avoid" section.
+
 ## Project Overview
 
-**Compass** is a privacy-focused web browser built on the Servo engine with integrated Tor support. It combines:
-- Servo browser engine for rendering
-- Corsair daemon for Tor connectivity
-- Rigging library for transport abstraction
-- Built-in privacy protections
+**Compass** is a privacy-focused web browser that:
+- Uses **Rigging** for Servo embedding (WebView API)
+- Adds **browser chrome** on top (toolbar, tabs, bookmarks - what Rigging stripped out)
+- Integrates **Corsair** for Tor connectivity
+- Implements **privacy protections** (fingerprint resistance, tracker blocking)
+
+### How Compass Relates to Rigging and Harbor
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    APPLICATIONS                                  │
+├─────────────────────────────┬───────────────────────────────────┤
+│         HARBOR              │           COMPASS                  │
+│  - No browser chrome        │  - Full browser chrome ◄── THIS   │
+│  - Backend management       │  - Tor integration                 │
+│  - UdsConnector only        │  - TorConnector + TcpConnector     │
+│  - Electron alternative     │  - Privacy browser                 │
+└─────────────────────────────┴───────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    RIGGING                                       │
+│            (forked from servoshell core)                         │
+│  - WebView API                                                   │
+│  - Window management (winit/surfman)                             │
+│  - Pluggable Connector trait                                     │
+│  - NO browser chrome (Compass adds this)                         │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    SERVO (upstream)                              │
+│  - WebRender, Stylo, Layout, Script, etc.                       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key insight**: Rigging is a fork of servoshell with browser chrome stripped out. Compass adds its own browser chrome back on top.
+
+## What Compass IS vs IS NOT
+
+| Compass IS | Compass IS NOT |
+|------------|----------------|
+| A privacy browser | A general-purpose browser |
+| Using Rigging for embedding | Embedding Servo directly |
+| Adding browser chrome to Rigging | Modifying Rigging's core |
+| Using TcpConnector + TorConnector | Using UdsConnector (that's Harbor) |
+| A full browser with UI | A chromeless app framework |
 
 ## Repository Structure
 
@@ -16,23 +60,29 @@ This document provides instructions for AI coding assistants (Claude Code, Gemin
 compass/
 ├── Cargo.toml           # Package manifest
 ├── src/
-│   ├── lib.rs           # Library exports and architecture docs
+│   ├── lib.rs           # Library exports
+│   ├── app.rs           # CompassApp - main browser
+│   ├── chrome/          # Browser UI (what Rigging doesn't have)
+│   │   ├── mod.rs
+│   │   ├── toolbar.rs   # URL bar, back/forward, etc.
+│   │   ├── tabs.rs      # Tab management
+│   │   └── bookmarks.rs # Bookmark management
 │   ├── config.rs        # Browser configuration
 │   ├── privacy.rs       # Privacy protection features
-│   └── transport.rs     # Transport management (Corsair integration)
+│   └── tor.rs           # Tor integration (via Corsair)
 ├── README.md
 ├── DESIGN.md
 └── IMPLEMENTATION_PLAN.md
 ```
 
-## Related Repositories
+## Related Projects
 
-| Repo | Purpose | Relationship |
-|------|---------|--------------|
-| [servo](https://github.com/marctjones/servo) | Browser engine | Fork, upstream tracking |
-| [corsair](https://github.com/marctjones/corsair) | Tor daemon | Runtime dependency |
-| [rigging](https://github.com/marctjones/rigging) | Transport layer | Library dependency |
-| [harbor](https://github.com/marctjones/harbor) | Local apps | Sibling project |
+| Project | Purpose | Relationship |
+|---------|---------|--------------|
+| [Rigging](https://github.com/marctjones/rigging) | Servo embedding | Library dependency |
+| [Corsair](https://github.com/marctjones/corsair) | Tor daemon | Runtime dependency |
+| [Harbor](https://github.com/marctjones/harbor) | Local apps | Sibling (also uses Rigging) |
+| [Servo](https://github.com/servo/servo) | Browser engine | Via Rigging |
 
 ## Coding Standards
 
@@ -277,9 +327,181 @@ compass https://example.com  # Monitor blocked requests
 3. **No Logging Sensitive Data**: URLs, cookies not logged
 4. **Secure Defaults**: All privacy features on by default
 
+## Using Rigging's API
+
+Compass uses Rigging's WebView API with TcpConnector (normal browsing) or TorConnector (Tor):
+
+```rust
+use rigging::{WebView, WebViewConfig, TcpConnector, TorConnector};
+
+// Create a WebView for normal browsing
+let webview = WebView::new(
+    WebViewConfig {
+        initial_url: "https://example.com".into(),
+        width: 1280,
+        height: 800,
+        device_pixel_ratio: 1.0,
+    },
+    TcpConnector,  // or TorConnector for Tor mode
+    &window,
+)?;
+
+// Handle events
+for event in webview.tick() {
+    match event {
+        WebViewEvent::NavigationRequest { url, .. } => {
+            // Update URL bar
+        }
+        WebViewEvent::TitleChanged(title) => {
+            // Update window title / tab title
+        }
+        // ...
+    }
+}
+```
+
+## Common Mistakes to Avoid
+
+**READ THIS SECTION CAREFULLY.** These are mistakes AI assistants keep making:
+
+### 1. DO NOT Embed Servo Directly
+
+**WRONG:**
+```rust
+use servo::Servo;
+```
+
+**RIGHT:**
+```rust
+use rigging::{WebView, WebViewConfig, TcpConnector};
+```
+
+**WHY:** Compass uses Rigging for Servo embedding. Rigging provides the stable API.
+
+### 2. DO NOT Modify Rigging for Compass-Specific Features
+
+**WRONG:**
+- Adding Tor-specific code to Rigging
+- Adding browser chrome to Rigging
+
+**RIGHT:**
+- Implement TorConnector that uses Corsair
+- Add browser chrome in Compass's `chrome/` module
+
+**WHY:** Rigging is shared with Harbor. Compass-specific code stays in Compass.
+
+### 3. DO NOT Use UdsConnector
+
+**WRONG:**
+```rust
+use rigging::UdsConnector;
+let webview = WebView::new(config, UdsConnector, &window)?;
+```
+
+**RIGHT:**
+```rust
+use rigging::{TcpConnector, TorConnector};
+// Normal browsing
+let webview = WebView::new(config, TcpConnector, &window)?;
+// Tor browsing
+let webview = WebView::new(config, TorConnector::new(corsair_socket)?, &window)?;
+```
+
+**WHY:** UdsConnector is for Harbor (local apps). Compass is a web browser.
+
+### 4. DO NOT Embed Arti Directly
+
+**WRONG:**
+```rust
+use arti_client::TorClient;
+```
+
+**RIGHT:**
+```rust
+// Use Corsair daemon via TorConnector
+use rigging::TorConnector;
+let connector = TorConnector::new("/tmp/corsair.sock")?;
+```
+
+**WHY:** Arti conflicts with Stylo (both use different SpiderMonkey versions). Corsair runs Arti in a separate process.
+
+### 5. DO NOT Forget Privacy Defaults
+
+**WRONG:**
+```rust
+impl Default for PrivacyConfig {
+    fn default() -> Self {
+        Self {
+            fingerprint_resistance: false,  // Off by default
+            // ...
+        }
+    }
+}
+```
+
+**RIGHT:**
+```rust
+impl Default for PrivacyConfig {
+    fn default() -> Self {
+        Self {
+            fingerprint_resistance: true,   // On by default
+            block_third_party_cookies: true,
+            https_only: true,
+            // ...
+        }
+    }
+}
+```
+
+**WHY:** This is a privacy browser. Privacy features should be ON by default.
+
+### 6. DO NOT Log Sensitive Data
+
+**WRONG:**
+```rust
+log::info!("Navigating to: {}", url);
+log::debug!("Cookie: {}", cookie_value);
+```
+
+**RIGHT:**
+```rust
+log::info!("Navigation started");
+// Never log URLs, cookies, or form data
+```
+
+**WHY:** Privacy browser. Logs could leak user activity.
+
+## Development Workflow: TDD and Commits
+
+### Test-Driven Development
+
+**Write tests BEFORE or ALONGSIDE implementation code.**
+
+```rust
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_privacy_defaults_are_strict() {
+        let config = PrivacyConfig::default();
+        assert!(config.fingerprint_resistance);
+        assert!(config.block_third_party_cookies);
+        assert!(config.https_only);
+    }
+}
+```
+
+### Commit Frequently
+
+**Commit after every successful test run.**
+
+```bash
+cargo test && git add -A && git commit -m "feat: add fingerprint resistance"
+```
+
 ## Related Projects
 
-- [Servo](https://github.com/servo/servo) - Browser engine
+- [Rigging](https://github.com/marctjones/rigging) - Servo embedding (forked from servoshell)
 - [Corsair](https://github.com/marctjones/corsair) - Tor daemon
-- [Rigging](https://github.com/marctjones/rigging) - Transport library
-- [Tor Browser](https://www.torproject.org/) - Reference implementation
+- [Harbor](https://github.com/marctjones/harbor) - Local app framework (sibling project)
+- [Servo](https://github.com/servo/servo) - Browser engine (via Rigging)
+- [Tor Browser](https://www.torproject.org/) - Reference for privacy features

@@ -508,6 +508,37 @@ mod tests {
 cargo test && git add -A && git commit -m "feat: add fingerprint resistance"
 ```
 
+## Knowledge Management Strategy
+
+This project uses a **four-tier content organization system** (same as llmfp, klareco, pdfe, harbor, rigging):
+
+| Content Type | Where It Goes | Why |
+|--------------|---------------|-----|
+| **Concepts, algorithms, theory** | [Wiki](https://github.com/marctjones/compass/wiki) | Educational, timeless reference |
+| **Research, ideas, lab notes** | [Discussions](https://github.com/marctjones/compass/discussions) | Unstructured exploration, feedback |
+| **Bugs, features, tasks** | [Issues](https://github.com/marctjones/compass/issues) | Actionable items with completion criteria |
+| **Code documentation, setup** | Markdown files | Version-controlled, code-specific |
+
+### Key Rules
+
+1. **DO NOT create markdown files for educational content** - Use the Wiki
+2. **DO NOT add TODO comments in code** - Create GitHub issues instead
+3. **DO reference issue numbers** in commits: `Fixes #17` or `See issue #25`
+4. **DO create issues proactively** when discovering bugs or enhancements
+
+### GitHub CLI Commands
+
+```bash
+# Issues
+gh issue list                              # List open issues
+gh issue create --title "X" --label "bug"  # Create issue
+gh issue close 123 --comment "Fixed"       # Close with comment
+
+# Wiki (separate git repo)
+git clone https://github.com/marctjones/compass.wiki.git
+# Edit .md files, then: git add . && git commit -m "msg" && git push
+```
+
 ## Related Projects
 
 - [Rigging](https://github.com/marctjones/rigging) - Servo embedding (forked from servoshell)
